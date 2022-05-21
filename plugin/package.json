@@ -1,0 +1,17 @@
+{
+  "name": "lospec",
+  "displayName": "Lospec",
+  "description": "Lospec to Aseprite",
+  "version": "0.1",
+  "author": { "name": "Boris Baskovec",
+    "email": "baskovec.boris@gmail.com",
+    "url": "https://baskovec.com/" },
+  "contributors": [ ],
+  "publisher": "baskovec",
+  "categories": [ "Scripts" ],
+  "contributes": {
+    "scripts": [
+      { "path": "./main.lua" }
+    ]
+  }
+}

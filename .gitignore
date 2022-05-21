@@ -1,0 +1,5 @@
+server/node_modules
+server/.env
+server/example-response.json
+server/dist
+plugin/lospec.aseprite-extension
