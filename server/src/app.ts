@@ -4,6 +4,7 @@ import WebSocket from 'ws';
 import dotenv from "dotenv";
 import { Pool } from "pg";
 import hexRgb from "./hexRgb";
+import { search } from "./proxy";
 
 // HTTP server
 const app = express();
@@ -38,14 +39,6 @@ interface Color {
   alpha: any,
 }
 
-interface PaletteDB {
-  id: string,
-  title: string,
-  colors: Array<string>,
-  downloads: number,
-  description: string,
-}
-
 interface Palette {
   id: string,
   title: string,
@@ -76,21 +69,18 @@ wss.on('connection', (ws: WebSocket) => {
     console.log(`Request parsed to JSON`);
     console.log(request);
 
-    await pool.query('SELECT * FROM palettes ORDER BY random() LIMIT 2', (err, result) => {
+    try {
+      const response = await search(request);
+      ws.send(JSON.stringify(response.data));
+    } catch (e) {
+      console.error(e);
+      ws.send(JSON.stringify({
+        status: "error",
+        message: "Could not get result from Lospec's website"
+      }));
+    }
 
-      let palettes: Palettes = {};
-      result.rows.map((palette: PaletteDB) => {
-        palettes[palette["id"]] = {
-          id: palette.id,
-          title: palette.title,
-          colors: palette.colors.map((color: string): Color => <Color>hexRgb(color)),
-          downloads: palette.downloads,
-          description: palette.description,
-        };
-      });
 
-      ws.send(JSON.stringify(palettes));
-    })
   });
 });
 
