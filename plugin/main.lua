@@ -384,20 +384,39 @@ function json.decode(str)
     return res
 end
 
+--****
+--********
+--************
 -- Plugin code
+--************
+--********
+--****
 
-local ws -- websocket created later
-local palettes = {}
-local currentPalette
+local ws
+local palettes = {} -- All the palettes that should be displayed on the screen
 
 -- Utilities
-
 local function splitByChunk(text, chunkSize)
     local s = {}
     for i=1, #text, chunkSize do
-        s[#s+1] = text:sub(i,i+chunkSize - 1)
+        s[#s+1] = text:sub(i, i+chunkSize - 1)
     end
     return s
+end
+
+-- Adds labels with a maximum lengths in characters
+local function labelWithMaxLength(dlg, label, text, maxLength)
+    local chunks = splitByChunk(text, maxLength)
+
+    local id
+    if (label ~= nil) then
+        id = label .. di
+    end
+
+    for di, textChunk in ipairs(chunks) do
+        dlg:label{ id=id, text=textChunk }
+        dlg:newrow()
+    end
 end
 
 -- Objects
@@ -414,7 +433,6 @@ function PaletteObject:new (o, id, title, colors, downloads, description)
     self.description = description
     return o
 end
-
 function PaletteObject:getAllColors()
     local allColors = {}
     for id, colorRow in pairs(currentPalette.colors) do
@@ -425,104 +443,173 @@ function PaletteObject:getAllColors()
     return allColors
 end
 
-local function createPalette()
-    if (currentPalette == nil) then
-        return
-    end
-
-    for id, color in pairs(currentPalette.getAllColors()) do
+-- Takes all colors from a Palette object and adds them to the current Aseprite palette
+local function usePalette(palette)
+    for id, color in pairs(palette.getAllColors()) do
         app.command.AddColor {
             color=color
         }
     end
 end
 
-local function labelWithMaxLength(dlg, label, text, maxLength)
-    local chunks = splitByChunk(text, maxLength)
 
-    local id
-    if (label ~= nil) then
-        id = label .. di
-    end
+local function createPaletteElement(dlg, palette)
+    dlg:label{
+        id="Title",
+        label="Title",
+        text=palettes.title
+    }
 
-    for di, textChunk in ipairs(chunks) do
-        dlg:label{ id=id, text=textChunk }
+    dlg:label{
+        id="downloads",
+        label="Downloads",
+        text=palettes.downloads
+    }
+
+    labelWithMaxLength(dlg, "Description", palettes.description, 80)
+
+    for rowNumber, colorsInRow in pairs(palettes.colors) do
+        dlg:shades{
+            id="test",
+            mode="pick",
+            colors=colorsInRow,
+            onclick=function(ev)
+                if ev.button == MouseButton.LEFT then
+                    -- In this case we change the active foreground color
+                    -- with the clicked color in the shades widget when
+                    -- the left mouse button is pressed.
+                    app.fgColor = ev.color
+                elseif ev.button == MouseButton.RIGHT then
+                    app.bgColor = ev.color
+                end
+            end
+        }
         dlg:newrow()
     end
+
+    dlg:button{ id="use_palette", text="Add colors to my palette", onclick=function() usePalette(palette) end }
+end
+
+local function updatePalettes(dlg)
+    for i, palette in pairs(palettes) do
+        createPaletteElement(dlg, palette)
+    end
+end
+
+-- This function is called when we get a response from our server in JSON after searching.
+-- We instantiate Palette objects and add them to the global "palettes" array
+local function handleSearchResponse(response)
+    palettes = {}
+
+    for id, v in pairs(response.palettes) do
+        local colors = v.colors
+
+        local colorsObjects = {}
+        local i = 0
+        local row = 0
+        local colorsPerRow = 20
+        for colorKey, colorValue in pairs(colors) do
+            local newColor = Color { r=colorValue.red, g=colorValue.green, b=colorValue.blue }
+            if colorsObjects[row] == nil then
+                colorsObjects[row] = { newColor }
+            else
+                table.insert(colorsObjects[row], newColor)
+            end
+
+            if (i == colorsPerRow) then
+                i = 0
+                row = row + 1
+            else
+                i = i + 1
+            end
+        end
+
+        table.insert(palettes, PaletteObject:new(nil, id, v.title, colorsObjects, v.downloads, v.description))
+    end
+
+    createResults()
 end
 
 local function handleMessage(mt, data)
     if mt == WebSocketMessageType.OPEN then
     elseif mt == WebSocketMessageType.TEXT then
         local response = json.decode(data)
-        for id, v in pairs(response) do
-            local colors = v.colors
 
-            local colorsObjects = {}
-            local i = 0
-            local row = 0
-            local colorsPerRow = 20
-            for colorKey, colorValue in pairs(colors) do
-                local newColor = Color { r=colorValue.red, g=colorValue.green, b= colorValue.blue }
-                if colorsObjects[row] == nil then
-                    colorsObjects[row] = { newColor }
-                else
-                    table.insert(colorsObjects[row], newColor)
-                end
-
-                if (i == colorsPerRow) then
-                    i = 0
-                    row = row + 1
-                else
-                    i = i + 1
-                end
-            end
-
-            table.insert(palettes, PaletteObject:new(nil, id, v.title, colorsObjects, v.downloads, v.description))
-
-            local dlg = Dialog("Palette")
-
-            dlg:label{
-                id="Title",
-                label="Title",
-                text=palettes[1].title
-            }
-
-            dlg:label{
-                id="downloads",
-                label="Downloads",
-                text=palettes[1].downloads
-            }
-
-            labelWithMaxLength(dlg, "Description", palettes[1].description, 80)
-
-            for rowNumber, colorsInRow in pairs(palettes[1].colors) do
-                dlg:shades{
-                    id="test",
-                    mode="pick",
-                    colors=colorsInRow,
-                    onclick=function(ev)
-                        if ev.button == MouseButton.LEFT then
-                            -- In this case we change the active foreground color
-                            -- with the clicked color in the shades widget when
-                            -- the left mouse button is pressed.
-                            app.fgColor = ev.color
-                        elseif ev.button == MouseButton.RIGHT then
-                            app.bgColor = ev.color
-                        end
-                    end
-                }
-                dlg:newrow()
-            end
-
-            currentPalette = palettes[1]
-            dlg:button{ id="use_palette", text="Add colors to my palette", onclick=createPalette }
-
-            dlg:button{ id="confirm", text="Next" }
-            dlg:show()
+        if (response.type == "search") then
+            handleSearchResponse(response)
         end
+
     elseif mt == WebSocketMessageType.CLOSE then
     end
+end
+
+ws = WebSocket{
+    onreceive = handleMessage,
+    url = "http://localhost:5001/",
+    deflate = false
+}
+
+-- Build request to send to server from dialog window data (the selected from values)
+function search(dlg)
+    local data = dlg.data
+    local request = {
+        ["colorNumberFilterType"] = data.colorNumberFilterType,
+        ["colorNumber"] = data.colorNumber,
+        ["page"] = data.page,
+        ["tag"] = data.tag,
+        ["sortingType"] = data.sortingType
+    }
+
+    local msg = json.encode(request)
+    ws:sendText(msg)
+end
+
+local function createSearchForm(dlg)
+    labelWithMaxLength(dlg, nil, "The Lospec Palette List is a database of palettes for pixel art. We include both palettes that originate from old hardware that could only display a few colors, as well as palettes created by pixel artists specifically for making art. All palettes can be downloaded and imported into your pixelling software of choice (learn how)",100)
+
+    dlg:combobox{
+        id="colorNumberFilterType",
+        label="Number of colors",
+        option="colorNumberFilterType",
+        options={ "Any", "Max", "Min", "Exact" },
+        onchange=function()
+            search(dlg)
+        end
+    }
+
+    dlg:slider{
+        id="colorNumber",
+        label="",
+        min=2,
+        max=256,
+        value=8,
+        onrelease=function()
+            search(dlg)
+        end
+    }
+
+    dlg:entry{
+        id="tag",
+        label="Search by tag :",
+        text="",
+        onchange=function()
+            search(dlg)
+        end
+    }
+
+    dlg:combobox{
+        id="sortingType",
+        label="Sorting",
+        option="sortingType",
+        options={ "Default", "A-Z", "Downloads", "Newest" },
+        onchange=function()
+            search(dlg)
+        end
+    }
+
+    dlg:newrow()
+
+    dlg:button{ id="confirm", text="OK" }
 end
 
 function init(plugin)
@@ -531,36 +618,15 @@ function init(plugin)
         title="Lospec palettes",
         group="view_extras",
         onclick=function()
-            ws = WebSocket{
-                onreceive = handleMessage,
-                url = "http://localhost:5001/",
-                deflate = false
-            }
             ws:connect()
 
-            local dlg = Dialog("Lospec palettes")
+            local dlgSearch = Dialog("Lospec palettes - Search")
+            createSearchForm(dlgSearch)
+            dlgSearch:show()
 
-            labelWithMaxLength(dlg, nil, "The Lospec Palette List is a database of palettes for pixel art. We include both palettes that originate from old hardware that could only display a few colors, as well as palettes created by pixel artists specifically for making art. All palettes can be downloaded and imported into your pixelling software of choice (learn how)",100)
-
-            dlg:label{ label="Newest palettes" }
-            dlg:label{ label="Todo : include newest palettes" }
-
-            dlg:label{ label="Most downloaded" }
-            dlg:label{ label="Todo : include most downloaded" }
-
-            dlg:newrow()
-
-            dlg:entry{ id="tag", label="Search by tag :", text="" }
-
-            dlg:button{ id="confirm", text="OK" }
-            dlg:show()
-
-            local data = dlg.data
-            if data.confirm then
-                local request = { ["tag"] = data.tag }
-                local msg = json.encode(request)
-                ws:sendText(msg)
-            end
+            local dlgPalettes = Dialog("Palettes")
+            createResults(dlgPalettes)
+            dlgPalettes:show()
         end
     }
 end

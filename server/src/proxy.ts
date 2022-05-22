@@ -28,6 +28,13 @@ export interface requestParams {
 }
 
 export const search = async (params: inputParams) => {
+  // Lowercase for all string values
+  for (const key of Object.keys(params)) {
+    // @ts-ignore
+    params[key] = typeof params[key] === "string" ? params[key].toLowerCase() : params[key];
+  }
+
+
   let finalParams : requestParams = {
     colorNumberFilterType: "any",
     colorNumber: 8,

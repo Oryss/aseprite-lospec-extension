@@ -32,25 +32,6 @@ connectToDB().then(() => {
   console.log("Connected to DB");
 });
 
-interface Color {
-  red: number,
-  green: number,
-  blue: number,
-  alpha: any,
-}
-
-interface Palette {
-  id: string,
-  title: string,
-  colors: Array<Color>,
-  downloads: number,
-  description: string,
-}
-
-interface Palettes {
-  [key: string]: Palette
-}
-
 // WebSocket server
 const wss = new WebSocket.Server({ server });
 
@@ -71,7 +52,19 @@ wss.on('connection', (ws: WebSocket) => {
 
     try {
       const response = await search(request);
-      ws.send(JSON.stringify(response.data));
+
+      // Before sending response, we must convert all hexadecimal colors to RGB because Aseprite does not support hexa
+      const responseWithRgb = {
+        type: "search",
+        ...response.data,
+        palettes: response.data.palettes.map((palette: any) => ({
+          ...palette,
+          colors: palette.colors.map((color: any) => hexRgb(color)),
+          colorsArray: palette.colorsArray.map((colorsArray: any) => hexRgb(colorsArray))
+        }))
+      }
+
+      ws.send(JSON.stringify(responseWithRgb));
     } catch (e) {
       console.error(e);
       ws.send(JSON.stringify({
@@ -79,8 +72,6 @@ wss.on('connection', (ws: WebSocket) => {
         message: "Could not get result from Lospec's website"
       }));
     }
-
-
   });
 });
 
