@@ -34,7 +34,6 @@ export const search = async (params: inputParams) => {
     params[key] = typeof params[key] === "string" ? params[key].toLowerCase() : params[key];
   }
 
-
   let finalParams : requestParams = {
     colorNumberFilterType: "any",
     colorNumber: 8,

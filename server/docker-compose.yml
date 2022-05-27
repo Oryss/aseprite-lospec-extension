@@ -11,18 +11,6 @@ services:
     volumes:
       - .:/usr/src/app
 
-  db:
-    container_name: postgres
-    image: postgres
-    ports:
-      - '5432:5432'
-    volumes:
-      - data:/data/db
-      - ./migrations:/migrations
-    environment:
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_NAME}
-
 volumes:
   data: {}
   migrations: {}

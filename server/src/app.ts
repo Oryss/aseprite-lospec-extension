@@ -2,7 +2,6 @@ import express from 'express';
 import http from 'http';
 import WebSocket from 'ws';
 import dotenv from "dotenv";
-import { Pool } from "pg";
 import hexRgb from "./hexRgb";
 import { search } from "./proxy";
 
@@ -10,27 +9,6 @@ import { search } from "./proxy";
 const app = express();
 dotenv.config();
 const server = http.createServer(app);
-
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: parseInt(process.env.DB_PORT || "5432")
-});
-
-const connectToDB = async () => {
-  try {
-    await pool.connect();
-  } catch (err) {
-    console.log(err);
-  }
-};
-
-connectToDB().then(() => {
-  console.log("Connected to DB");
-});
 
 // WebSocket server
 const wss = new WebSocket.Server({ server });
@@ -49,6 +27,14 @@ wss.on('connection', (ws: WebSocket) => {
 
     console.log(`Request parsed to JSON`);
     console.log(request);
+
+    request = {
+      colorNumberFilterType: request?.colorNumberFilterType,
+      colorNumber: request?.colorNumber,
+      page: request?.page,
+      tag: request?.tag,
+      sortingType: request?.sortingType
+    }
 
     try {
       const response = await search(request);
