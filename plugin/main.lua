@@ -394,6 +394,7 @@ end
 
 local ws
 local palettes = {} -- All the palettes that should be displayed on the screen
+local totalResults
 
 -- Utilities
 local function splitByChunk(text, chunkSize)
@@ -406,36 +407,45 @@ end
 
 -- Adds labels with a maximum lengths in characters
 local function labelWithMaxLength(dlg, label, text, maxLength)
+    if (text == nil) then
+        return
+    end
+
     local chunks = splitByChunk(text, maxLength)
 
     local id
     if (label ~= nil) then
-        id = label .. di
+        id = label
     end
 
     for di, textChunk in ipairs(chunks) do
-        dlg:label{ id=id, text=textChunk }
+        if (di == 1 and label ~= nil) then
+            dlg:label{ id=id, label=label, text=textChunk }
+        else
+            dlg:label{ id=id, text=textChunk }
+        end
         dlg:newrow()
     end
 end
 
 -- Objects
 
-PaletteObject = { id = "", title = "", colors = {}, downloads = 0, description = ""}
-function PaletteObject:new (o, id, title, colors, downloads, description)
-    o = o or {}
-    setmetatable(o, self)
-    self.__index = self
+PaletteObject = { id = "", title = "", colors = {}, downloads = 0, description = "", likes = 0, username = ""}
+PaletteObject.new = function (id, title, colors, downloads, description)
+    local self = {}
     self.id = id
     self.title = title
     self.colors = colors
     self.downloads = downloads
     self.description = description
-    return o
+    self.likes = likes
+    self.username = username
+    return self
 end
-function PaletteObject:getAllColors()
+
+function getAllColors(palette)
     local allColors = {}
-    for id, colorRow in pairs(currentPalette.colors) do
+    for id, colorRow in pairs(palette.colors) do
         for id, color in pairs(colorRow) do
             table.insert(allColors, color)
         end
@@ -445,7 +455,7 @@ end
 
 -- Takes all colors from a Palette object and adds them to the current Aseprite palette
 local function usePalette(palette)
-    for id, color in pairs(palette.getAllColors()) do
+    for id, color in pairs(getAllColors(palette)) do
         app.command.AddColor {
             color=color
         }
@@ -454,51 +464,85 @@ end
 
 
 local function createPaletteElement(dlg, palette)
+    if (palette == nil) then
+        return
+    end
+
     dlg:label{
         id="Title",
         label="Title",
-        text=palettes.title
+        text=palette.title .. " - Created by " .. palette.username
     }
 
     dlg:label{
-        id="downloads",
+        id="Downloads",
         label="Downloads",
-        text=palettes.downloads
+        text=palette.downloads
     }
 
-    labelWithMaxLength(dlg, "Description", palettes.description, 80)
+    dlg:label{
+        id="Likes",
+        label="Likes",
+        text=palette.likes
+    }
 
-    for rowNumber, colorsInRow in pairs(palettes.colors) do
+    labelWithMaxLength(dlg, "Description", palette.description, 100)
+
+    for rowNumber, colorsInRow in pairs(palette.colors) do
         dlg:shades{
-            id="test",
+            id="paletteColors",
             mode="pick",
             colors=colorsInRow,
-            onclick=function(ev)
-                if ev.button == MouseButton.LEFT then
-                    -- In this case we change the active foreground color
-                    -- with the clicked color in the shades widget when
-                    -- the left mouse button is pressed.
-                    app.fgColor = ev.color
-                elseif ev.button == MouseButton.RIGHT then
-                    app.bgColor = ev.color
-                end
+            onclick=function()
+                usePalette(palette)
             end
         }
         dlg:newrow()
     end
-
-    dlg:button{ id="use_palette", text="Add colors to my palette", onclick=function() usePalette(palette) end }
 end
 
-local function updatePalettes(dlg)
-    for i, palette in pairs(palettes) do
-        createPaletteElement(dlg, palette)
+local function createResultsDialog(page)
+    local dlgPalettes = Dialog(totalResults .. " palettes are matching your criteria")
+
+    createPaletteElement(dlgPalettes, palettes[page])
+
+    local bounds = dlgPalettes.bounds
+    bounds.y = 20
+    bounds.x = 400
+    bounds.width = 500
+
+    dlgPalettes:newrow()
+
+    if (page > 1) then
+        dlgPalettes:button{
+            id="confirm",
+            text="< Previous palette",
+            onclick=function()
+                dlgPalettes:close()
+                createResultsDialog(page - 1)
+            end }
     end
+
+    dlgPalettes:button{ id="use_palette", text="Add colors to my palette", onclick=function() usePalette(palettes[page]) end }
+
+    if (#palettes > 1 and page < #palettes) then
+        dlgPalettes:button{
+            id="confirm",
+            text="Next palette >",
+            onclick=function()
+                dlgPalettes:close()
+                createResultsDialog(page + 1)
+            end }
+    end
+
+    dlgPalettes:show{ bounds=bounds }
 end
 
 -- This function is called when we get a response from our server in JSON after searching.
 -- We instantiate Palette objects and add them to the global "palettes" array
 local function handleSearchResponse(response)
+    totalResults = response.totalCount
+
     palettes = {}
 
     for id, v in pairs(response.palettes) do
@@ -524,10 +568,11 @@ local function handleSearchResponse(response)
             end
         end
 
-        table.insert(palettes, PaletteObject:new(nil, id, v.title, colorsObjects, v.downloads, v.description))
+        local paletteToAdd = PaletteObject.new(id, v.title, colorsObjects, v.downloads, v.description, v.likes, v.user.name)
+        table.insert(palettes, paletteToAdd)
     end
 
-    createResults()
+    createResultsDialog(1)
 end
 
 local function handleMessage(mt, data)
@@ -565,16 +610,16 @@ function search(dlg)
 end
 
 local function createSearchForm(dlg)
-    labelWithMaxLength(dlg, nil, "The Lospec Palette List is a database of palettes for pixel art. We include both palettes that originate from old hardware that could only display a few colors, as well as palettes created by pixel artists specifically for making art. All palettes can be downloaded and imported into your pixelling software of choice (learn how)",100)
+    dlg:label{
+        label="Lospec Palette",
+        text="The Lospec Palette List is a database of palettes for pixel art."
+    }
 
     dlg:combobox{
         id="colorNumberFilterType",
         label="Number of colors",
         option="colorNumberFilterType",
         options={ "Any", "Max", "Min", "Exact" },
-        onchange=function()
-            search(dlg)
-        end
     }
 
     dlg:slider{
@@ -582,34 +627,24 @@ local function createSearchForm(dlg)
         label="",
         min=2,
         max=256,
-        value=8,
-        onrelease=function()
-            search(dlg)
-        end
+        value=8
     }
 
     dlg:entry{
         id="tag",
         label="Search by tag :",
         text="",
-        onchange=function()
-            search(dlg)
-        end
     }
 
     dlg:combobox{
         id="sortingType",
         label="Sorting",
         option="sortingType",
-        options={ "Default", "A-Z", "Downloads", "Newest" },
-        onchange=function()
-            search(dlg)
-        end
+        options={ "Default", "A-Z", "Downloads", "Newest" }
     }
 
     dlg:newrow()
-
-    dlg:button{ id="confirm", text="OK" }
+    dlg:button{ id="searchButton", text="Search", onclick=function() search(dlg) end }
 end
 
 function init(plugin)
@@ -622,11 +657,13 @@ function init(plugin)
 
             local dlgSearch = Dialog("Lospec palettes - Search")
             createSearchForm(dlgSearch)
-            dlgSearch:show()
 
-            local dlgPalettes = Dialog("Palettes")
-            createResults(dlgPalettes)
-            dlgPalettes:show()
+            local bounds = dlgSearch.bounds
+            bounds.y = 20
+            bounds.x = 20
+
+            dlgSearch:show{ bounds=bounds }
+            createResultsDialog(1)
         end
     }
 end
