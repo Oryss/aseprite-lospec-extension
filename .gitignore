@@ -1,5 +1,6 @@
 server/node_modules
 server/.env
 server/example-response.json
-server/dist
+server/dist/**
+!server/dist/.gitkeep
 plugin/lospec.aseprite-extension
