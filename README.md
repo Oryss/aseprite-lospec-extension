@@ -2,6 +2,11 @@
 
 This extensions adds an interface to browser Lospec palettes inside Aseprite
 
+![image 1](https://github.com/Oryss/aseprite-lospec-extension/blob/master/1.png)
+
+![image 2](https://github.com/Oryss/aseprite-lospec-extension/blob/master/2.png)
+
+
 ## How to download
 
 - Go to [the releases page](https://github.com/Oryss/aseprite-lospec-extension/releases)
