@@ -1,4 +1,6 @@
-# aseprite-lospec-extension
+# Lospec Aseprite extension
+
+This extensions adds an interface to browser Lospec palettes inside Aseprite
 
 ## How to download
 
