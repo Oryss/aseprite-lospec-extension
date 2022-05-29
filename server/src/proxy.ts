@@ -59,7 +59,7 @@ export const search = async (params: inputParams) => {
   }
 
   if (params?.sortingType) {
-    finalParams.sortingType = params.sortingType;
+    finalParams.sortingType = params.sortingType === "a-z" ? "alphabetical" : params.sortingType;
   }
 
   console.log("Requesting Lospec with params");
