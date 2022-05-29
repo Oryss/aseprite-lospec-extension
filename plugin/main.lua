@@ -395,6 +395,9 @@ end
 local ws
 local palettes = {} -- All the palettes that should be displayed on the screen
 local totalResults
+local dlgSearch
+local dlgPalettes
+local currentPage = 0
 
 -- Utilities
 local function splitByChunk(text, chunkSize)
@@ -431,7 +434,7 @@ end
 -- Objects
 
 PaletteObject = { id = "", title = "", colors = {}, downloads = 0, description = "", likes = 0, username = ""}
-PaletteObject.new = function (id, title, colors, downloads, description)
+PaletteObject.new = function (id, title, colors, downloads, description, likes, username)
     local self = {}
     self.id = id
     self.title = title
@@ -463,33 +466,33 @@ local function usePalette(palette)
 end
 
 
-local function createPaletteElement(dlg, palette)
+local function createPaletteElement(palette)
     if (palette == nil) then
         return
     end
 
-    dlg:label{
+    dlgPalettes:label{
         id="Title",
         label="Title",
         text=palette.title .. " - Created by " .. palette.username
     }
 
-    dlg:label{
+    dlgPalettes:label{
         id="Downloads",
         label="Downloads",
         text=palette.downloads
     }
 
-    dlg:label{
+    dlgPalettes:label{
         id="Likes",
         label="Likes",
         text=palette.likes
     }
 
-    labelWithMaxLength(dlg, "Description", palette.description, 100)
+    labelWithMaxLength(dlgPalettes, "Description", palette.description, 100)
 
     for rowNumber, colorsInRow in pairs(palette.colors) do
-        dlg:shades{
+        dlgPalettes:shades{
             id="paletteColors",
             mode="pick",
             colors=colorsInRow,
@@ -497,45 +500,74 @@ local function createPaletteElement(dlg, palette)
                 usePalette(palette)
             end
         }
-        dlg:newrow()
+        dlgPalettes:newrow()
     end
+
+    dlgPalettes:label{
+        id="paletteColorsActionsLabel",
+        label="Actions",
+        text="",
+    }
 end
 
 local function createResultsDialog(page)
-    local dlgPalettes = Dialog(totalResults .. " palettes are matching your criteria")
+    if #palettes <= 0 then
+        return
+    end
+    local pageAmount = math.ceil(totalResults / 10)
 
-    createPaletteElement(dlgPalettes, palettes[page])
+    dlgPalettes = Dialog(totalResults .. " palettes are matching your criteria. Page " .. currentPage+1 .. " / " .. pageAmount .. ". Palette " .. page .. " / " .. #palettes)
+
+    createPaletteElement(palettes[page])
 
     local bounds = dlgPalettes.bounds
     bounds.y = 20
     bounds.x = 400
     bounds.width = 500
 
-    dlgPalettes:newrow()
+    if (currentPage > 0 or page > 1) then
+        local isButtonPageChange = page - 1 < 1
+        local label = "palette"
+        if isButtonPageChange then
+            label = "page"
+        end
 
-    if (page > 1) then
         dlgPalettes:button{
             id="confirm",
-            text="< Previous palette",
+            text="Previous ".. label .." <",
             onclick=function()
                 dlgPalettes:close()
-                createResultsDialog(page - 1)
+                if isButtonPageChange then
+                    search(currentPage - 1)
+                else
+                    createResultsDialog(page - 1)
+                end
             end }
     end
 
     dlgPalettes:button{ id="use_palette", text="Add colors to my palette", onclick=function() usePalette(palettes[page]) end }
 
-    if (#palettes > 1 and page < #palettes) then
+    if (currentPage < pageAmount or page < #palettes) then
+        local isButtonPageChange = page + 1 > #palettes
+        local label = "palette"
+        if isButtonPageChange then
+            label = "page"
+        end
+
         dlgPalettes:button{
             id="confirm",
-            text="Next palette >",
+            text="Next ".. label .." >",
             onclick=function()
                 dlgPalettes:close()
-                createResultsDialog(page + 1)
+                if page + 1 > #palettes then
+                    search(currentPage + 1)
+                else
+                    createResultsDialog(page + 1)
+                end
             end }
     end
 
-    dlgPalettes:show{ bounds=bounds }
+    dlgPalettes:show{ bounds=bounds, wait=false }
 end
 
 -- This function is called when we get a response from our server in JSON after searching.
@@ -568,7 +600,14 @@ local function handleSearchResponse(response)
             end
         end
 
-        local paletteToAdd = PaletteObject.new(id, v.title, colorsObjects, v.downloads, v.description, v.likes, v.user.name)
+        local username
+        if v.user == nil then
+            username = "Unknown"
+        else
+            username = v.user.name
+        end
+
+        local paletteToAdd = PaletteObject.new(id, v.title, colorsObjects, v.downloads, v.description, v.likes, username)
         table.insert(palettes, paletteToAdd)
     end
 
@@ -590,17 +629,23 @@ end
 
 ws = WebSocket{
     onreceive = handleMessage,
-    url = "http://localhost:5001/",
+    url = "http://orys.ddns.net:5001/",
     deflate = false
 }
 
 -- Build request to send to server from dialog window data (the selected from values)
-function search(dlg)
-    local data = dlg.data
+function search(page)
+    if page == nil then
+        page = 0
+    end
+
+    currentPage = page
+
+    local data = dlgSearch.data
     local request = {
         ["colorNumberFilterType"] = data.colorNumberFilterType,
         ["colorNumber"] = data.colorNumber,
-        ["page"] = data.page,
+        ["page"] = page,
         ["tag"] = data.tag,
         ["sortingType"] = data.sortingType
     }
@@ -609,20 +654,20 @@ function search(dlg)
     ws:sendText(msg)
 end
 
-local function createSearchForm(dlg)
-    dlg:label{
+local function createSearchForm()
+    dlgSearch:label{
         label="Lospec Palette",
         text="The Lospec Palette List is a database of palettes for pixel art."
     }
 
-    dlg:combobox{
+    dlgSearch:combobox{
         id="colorNumberFilterType",
         label="Number of colors",
         option="colorNumberFilterType",
         options={ "Any", "Max", "Min", "Exact" },
     }
 
-    dlg:slider{
+    dlgSearch:slider{
         id="colorNumber",
         label="",
         min=2,
@@ -630,21 +675,21 @@ local function createSearchForm(dlg)
         value=8
     }
 
-    dlg:entry{
+    dlgSearch:entry{
         id="tag",
         label="Search by tag :",
         text="",
     }
 
-    dlg:combobox{
+    dlgSearch:combobox{
         id="sortingType",
         label="Sorting",
         option="sortingType",
         options={ "Default", "A-Z", "Downloads", "Newest" }
     }
 
-    dlg:newrow()
-    dlg:button{ id="searchButton", text="Search", onclick=function() search(dlg) end }
+    dlgSearch:newrow()
+    dlgSearch:button{ id="searchButton", text="Search", onclick=function() search() end }
 end
 
 function init(plugin)
@@ -655,18 +700,21 @@ function init(plugin)
         onclick=function()
             ws:connect()
 
-            local dlgSearch = Dialog("Lospec palettes - Search")
-            createSearchForm(dlgSearch)
+            dlgSearch = Dialog{title="Lospec palettes - Search", onclose=function()
+                palettes = {}
+            end}
+            createSearchForm()
 
             local bounds = dlgSearch.bounds
             bounds.y = 20
             bounds.x = 20
 
-            dlgSearch:show{ bounds=bounds }
-            createResultsDialog(1)
+            dlgSearch:show{ bounds=bounds, wait=false }
         end
     }
 end
 
 function exit(plugin)
+    palettes = {}
+    ws:close()
 end
