@@ -1,11 +1,11 @@
 dofile("./json.lua")
 
-local ws
-local palettes = {} -- All the palettes that should be displayed on the screen
-local totalResults
-local dlgSearch
-local dlgPalettes
-local currentPage = 0
+local ws -- WebSocket
+local palettes = {} -- Holds the palettes for the current page
+local totalResults -- Holds the total number of results for the current search filters
+local dlgSearch -- Search dialog
+local dlgPalettes -- Palettes dialog (results for a search)
+local currentPage = 0 -- Current page of the search results
 
 --[[
     Utilities
@@ -19,7 +19,7 @@ local function splitByChunk(text, chunkSize)
     return s
 end
 
--- Adds labels with a maximum lengths in characters
+-- Adds labels with a maximum lengths in characters. This will split a string into multiple labels. (can split in the middle of words)
 local function labelWithMaxLength(dlg, label, text, maxLength)
     if (text == nil) then
         return
@@ -65,6 +65,7 @@ PaletteObject.new = function (id, title, colors, downloads, description, likes, 
     return self
 end
 
+-- Colors inside palettes are stored in rows. This function returns all colors in a palette
 function getAllColors(palette)
     local allColors = {}
     for id, colorRow in pairs(palette.colors) do
@@ -75,6 +76,7 @@ function getAllColors(palette)
     return allColors
 end
 
+-- Creates a display for a palette with labels and colors
 local function createPaletteElement(palette)
     if (palette == nil) then
         return
@@ -119,6 +121,8 @@ local function createPaletteElement(palette)
     }
 end
 
+-- Creates a dialog which displays a palette. This was intended to display multiple palettes per page, but it was not
+-- possible to do that with the current Aseprite API.
 local function createResultsDialog(page)
     if #palettes <= 0 then
         return
@@ -133,6 +137,10 @@ local function createResultsDialog(page)
     bounds.y = 20
     bounds.x = 400
     bounds.width = 500
+
+    -- Buttons
+    -- The previous/next button will either go to the previous/next palette in the current page or the previous/next page.
+    -- Todo: Make the previous page button go to the last palette in the list rather than reset to the first element
 
     if (currentPage > 0 or page > 1) then
         local isButtonPageChange = page - 1 < 1
@@ -192,7 +200,7 @@ local function handleSearchResponse(response)
         local colorsObjects = {}
         local i = 0
         local row = 0
-        local colorsPerRow = 20
+        local colorsPerRow = 20 -- Todo: maybe handle this differently? Add all colors in the palette and then split them in rows later
         for colorKey, colorValue in pairs(colors) do
             local newColor = Color { r=colorValue.red, g=colorValue.green, b=colorValue.blue }
             if colorsObjects[row] == nil then
@@ -209,6 +217,7 @@ local function handleSearchResponse(response)
             end
         end
 
+        -- User can be nil from server for some reason
         local username
         if v.user == nil then
             username = "Unknown"
@@ -223,6 +232,7 @@ local function handleSearchResponse(response)
     createResultsDialog(1)
 end
 
+-- Handles all messages we get from the websocket server
 local function handleMessage(mt, data)
     if mt == WebSocketMessageType.OPEN then
     elseif mt == WebSocketMessageType.TEXT then
@@ -238,11 +248,11 @@ end
 
 ws = WebSocket{
     onreceive = handleMessage,
-    url = "http://orys.ddns.net:5001/",
+    url = "http://orys.ddns.net:5001/", -- This is the server that runs ./../server/app.ts
     deflate = false
 }
 
--- Build request to send to server from dialog window data (the selected from values)
+-- Build request to send our websocket server from search dialog data (the selected form values)
 function search(page)
     if page == nil then
         page = 0
@@ -305,7 +315,7 @@ function init(plugin)
     plugin:newCommand{
         id="LospecPalettes",
         title="Lospec palettes",
-        group="view_extras",
+        group="view_extras", -- Todo: change this to something else
         onclick=function()
             ws:connect()
 
